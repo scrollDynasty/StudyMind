@@ -439,14 +439,14 @@
     }
 
     // Закрытие модального окна при клике вне его
-    window.onclick = function (event) {
-        if (event.target.className === 'modal') {
+    window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
             event.target.style.display = 'none';
         }
     }
 
     // Предварительный просмотр изображений
-    document.getElementById('images').addEventListener('change', function (e) {
+    document.getElementById('images').addEventListener('change', function(e) {
         const preview = document.getElementById('imagePreview');
         preview.innerHTML = '';
 
@@ -457,7 +457,7 @@
             }
 
             const reader = new FileReader();
-            reader.onload = function (event) {
+            reader.onload = function(event) {
                 const img = document.createElement('img');
                 img.src = event.target.result;
                 img.className = 'preview-image';
@@ -502,10 +502,41 @@
     dropZone.addEventListener('drop', handleDrop, false);
 
     function handleDrop(e) {
-        const files = e.dataTransfer.files;
-        document.getElementById('images').files = files;
-        const changeEvent = new Event('change');
-        document.getElementById('images').dispatchEvent(changeEvent);
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files && files.length > 0) {
+            const fileInput = document.getElementById('images');
+            if (fileInput) {
+                // Создаем новый FileList
+                const dataTransfer = new DataTransfer();
+                Array.from(files).forEach(file => dataTransfer.items.add(file));
+                fileInput.files = dataTransfer.files;
+
+                // Вызываем событие change для обновления превью
+                const event = new Event('change');
+                fileInput.dispatchEvent(event);
+            }
+        }
+    }
+
+    // UI управление
+    function showLoader() {
+        document.getElementById('loader').style.display = 'block';
+    }
+
+    function hideLoader() {
+        document.getElementById('loader').style.display = 'none';
+    }
+
+    function showError(message) {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = `
+            <div class="card" style="border: 2px solid var(--danger); background-color: #FEF2F2;">
+                <h3 style="color: var(--danger)">Ошибка</h3>
+                <p>${message}</p>
+            </div>
+        `;
     }
 
     // Генерация теста из изображения
@@ -526,12 +557,12 @@
         showLoader();
         hideModal('imageModal');
 
-        const formData = new FormData();
-        formData.append('files', files[0]);
-        formData.append('title', title);
-        formData.append('num_questions', questionCount);
-
         try {
+            const formData = new FormData();
+            formData.append('file', files[0]);
+            formData.append('title', title);
+            formData.append('num_questions', questionCount);
+
             const response = await fetch('/api/images/upload', {
                 method: 'POST',
                 body: formData
@@ -590,75 +621,51 @@
         }
     }
 
-    // Управление UI состояниями
-    function showLoader() {
-        document.getElementById('loader').style.display = 'block';
-    }
-
-    function hideLoader() {
-        document.getElementById('loader').style.display = 'none';
-    }
-
-    function showError(message) {
-        const resultDiv = document.getElementById('result');
-        resultDiv.innerHTML = `
-                <div class="card" style="border: 2px solid var(--danger); background-color: #FEF2F2;">
-                    <h3 style="color: var(--danger)">Ошибка</h3>
-                    <p>${message}</p>
-                </div>
-            `;
-    }
-
     // Отображение результатов теста
     function displayResults(data) {
         const resultDiv = document.getElementById('result');
         currentTest = data.test;
 
         let output = `
-                <div class="card">
-                    <h2>${data.test.title}</h2>
-                    <form id="testForm">
-            `;
+            <div class="card">
+                <h2>${data.test.title}</h2>
+                <form id="testForm">
+        `;
 
         data.test.questions.forEach((q, i) => {
             output += `
-                    <div class="question-card" id="question-${q.id}">
-                        <p class="question-text">Вопрос ${i + 1}: ${q.text}</p>
-                        <div class="options-grid">
-                            ${q.options.map((opt, j) => `
-                                <button type="button"
-                                    class="option-button"
-                                    onclick="selectOption(this, ${q.id}, '${opt}')"
-                                    data-question="${q.id}"
-                                    data-option="${opt}">
-                                    ${String.fromCharCode(65 + j)}. ${opt}
-                                </button>
-                            `).join('')}
-                        </div>
+                <div class="question-card" id="question-${q.id}">
+                    <p class="question-text">Вопрос ${i + 1}: ${q.text}</p>
+                    <div class="options-grid">
+                        ${q.options.map((opt, j) => `
+                            <button type="button"
+                                class="option-button"
+                                onclick="selectOption(this, ${q.id}, '${opt}')"
+                                data-question="${q.id}"
+                                data-option="${opt}">
+                                ${String.fromCharCode(65 + j)}. ${opt}
+                            </button>
+                        `).join('')}
                     </div>
-                `;
+                </div>
+            `;
         });
 
         output += `
-                    <button type="button" class="button button-primary" onclick="checkAnswers()" style="margin-top: 1rem;">
-                        Завершить тест
-                    </button>
-                </form>
-            </div>`;
+                <button type="button" id="submitButton" class="button button-primary" onclick="checkAnswers()" style="margin-top: 1rem;">
+                    Завершить тест
+                </button>
+            </form>
+        </div>`;
 
         resultDiv.innerHTML = output;
-
-        // Плавный скролл к результатам
-        resultDiv.scrollIntoView({behavior: 'smooth', block: 'start'});
+        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // Выбор варианта ответа
     function selectOption(button, questionId, option) {
-        // Убираем выделение с других кнопок этого вопроса
         const options = document.querySelectorAll(`button[data-question="${questionId}"]`);
         options.forEach(opt => opt.classList.remove('selected'));
-
-        // Выделяем выбранную кнопку
         button.classList.add('selected');
 
         // Анимация выбора
@@ -672,82 +679,79 @@
     async function checkAnswers() {
         if (!currentTest) return;
 
+        const submitButton = document.getElementById('submitButton');
+        if (submitButton.disabled) return; // Если кнопка уже отключена, прекращаем выполнение
+
         const answers = {};
         let unansweredQuestions = [];
 
         currentTest.questions.forEach((q, i) => {
-            const selectedOption = document.querySelector(`.option-button.selected[data-question="${q.id}"]`);
+            const selectedOption = document.querySelector(`button.selected[data-question="${q.id}"]`);
             if (selectedOption) {
                 answers[q.id] = selectedOption.dataset.option;
             } else {
                 unansweredQuestions.push(i + 1);
             }
         });
+
         if (unansweredQuestions.length > 0) {
             alert(`Пожалуйста, ответьте на все вопросы!\nНе отвечены вопросы: ${unansweredQuestions.join(', ')}`);
+
+            // Подсветка неотвеченных вопросов
+            unansweredQuestions.forEach(qNum => {
+                const questionCard = document.querySelector(`#question-${currentTest.questions[qNum-1].id}`);
+                if (questionCard) {
+                    questionCard.style.border = '2px solid var(--warning)';
+                    setTimeout(() => {
+                        questionCard.style.border = '2px solid var(--border)';
+                    }, 2000);
+                }
+            });
             return;
         }
 
-        const submitButton = document.querySelector('button[onclick="checkAnswers()"]');
-        submitButton.disabled = true; // Отключаем кнопку после первой проверки
+        // Отключаем кнопку после первой проверки
+        submitButton.disabled = true;
 
-        // Подсветка неотвеченных вопросов
-        unansweredQuestions.forEach(qNum => {
-            const questionCard = document.querySelector(`#question-${qNum}`);
-            questionCard.style.border = '2px solid var(--warning)';
-            setTimeout(() => {
-                questionCard.style.border = '2px solid var(--border)';
-            }, 2000);
+        let correctCount = 0;
+        currentTest.questions.forEach((q) => {
+            const userAnswer = answers[q.id];
+            const isCorrect = userAnswer === q.correct_answer;
+            if (isCorrect) correctCount++;
+
+            const options = document.querySelectorAll(`button[data-question="${q.id}"]`);
+            options.forEach(opt => {
+                if (opt.dataset.option === q.correct_answer) {
+                    opt.classList.add('correct');
+                } else if (opt.dataset.option === userAnswer && !isCorrect) {
+                    opt.classList.add('incorrect');
+                }
+                opt.disabled = true;
+            });
         });
-        return;
+
+        const percentage = (correctCount / currentTest.questions.length) * 100;
+
+        // Проверяем, существует ли уже блок с результатами
+        if (!document.querySelector('.result-summary')) {
+            const resultSummary = document.createElement('div');
+            resultSummary.className = 'result-summary';
+            resultSummary.innerHTML = `
+                <h3>Результаты теста</h3>
+                <p>Правильных ответов: ${correctCount} из ${currentTest.questions.length}</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percentage}%"></div>
+                </div>
+                <p style="margin-top: 1rem">Процент правильных ответов: ${percentage.toFixed(1)}%</p>
+                <button onclick="location.reload()" class="button button-secondary" style="margin-top: 1rem">
+                    Создать новый тест
+                </button>
+            `;
+
+            document.getElementById('testForm').appendChild(resultSummary);
+            resultSummary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
-
-    let correctCount = 0;
-    currentTest.questions.forEach((q) => {
-        const userAnswer = answers[q.id];
-        const isCorrect = userAnswer === q.correct_answer;
-        if (isCorrect) correctCount++;
-
-        const options = document.querySelectorAll(`button[data-question="${q.id}"]`);
-        options.forEach(opt => {
-            if (opt.dataset.option === q.correct_answer) {
-                opt.classList.add('correct');
-            } else if (opt.dataset.option === userAnswer && !isCorrect) {
-                opt.classList.add('incorrect');
-            }
-            opt.disabled = true;
-        });
-    });
-
-    const percentage = (correctCount / currentTest.questions.length) * 100;
-
-    // Проверяем, существует ли уже блок с результатами
-    const existingResults = document.querySelector('.result-summary');
-    if (existingResults) return;// Если результаты уже показаны, не показываем их снова
-
-    const resultSummary = `
-        <div class="result-summary">
-            <h3>Результаты теста</h3>
-            <p>Правильных ответов: ${correctCount} из ${currentTest.questions.length}</p>
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: ${percentage}%"></div>
-            </div>
-            <p style="margin-top: 1rem">Процент правильных ответов: ${percentage.toFixed(1)}%</p>
-            <button onclick="location.reload()" class="button button-secondary" style="margin-top: 1rem">
-                Создать новый тест
-            </button>
-        </div>
-    `;
-
-
-    const summaryElement = document.createElement('div');
-    summaryElement.innerHTML = resultSummary;
-    document.getElementById('testForm').appendChild(summaryElement);
-
-    // Плавный скролл к результатам
-    summaryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
 </script>
 </body>
 </html>
