@@ -1,13 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from pathlib import Path
-import os
 
-from app.routers import auth, notes, tests, image_processor
-
-app = FastAPI(title="StudyMind AI")
+# Создаем новый экземпляр FastAPI
+app = FastAPI()
 
 # Настройка CORS
 app.add_middleware(
@@ -20,57 +18,53 @@ app.add_middleware(
 
 # Определяем базовые пути
 BASE_DIR = Path(__file__).resolve().parent.parent
-STATIC_DIR = BASE_DIR / "frontend"
+FRONTEND_DIR = BASE_DIR / "frontend"
+UPLOADS_DIR = BASE_DIR / "uploads"
 
-# Проверяем наличие папки frontend
-if not STATIC_DIR.exists():
-    raise Exception(f"Directory {STATIC_DIR} does not exist!")
+# Создаем папку для загрузок, если её нет
+UPLOADS_DIR.mkdir(exist_ok=True)
 
-# Подключаем роутеры
-app.include_router(auth.router)
-app.include_router(notes.router)
-app.include_router(tests.router)
-app.include_router(image_processor.router)
+# Проверяем наличие index.html при запуске
+index_path = FRONTEND_DIR / "index.html"
+if not index_path.exists():
+    raise Exception(f"index.html not found at {index_path}")
 
-# Монтируем статические файлы
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+print(f"Base directory: {BASE_DIR}")
+print(f"Frontend directory: {FRONTEND_DIR}")
+print(f"Index.html exists: {index_path.exists()}")
+print(f"Index.html absolute path: {index_path.absolute()}")
 
-
-@app.get("/", response_class=HTMLResponse)
+# Определяем корневой маршрут ДО монтирования статических файлов
+@app.get("/")
 async def root():
-    """Корневой маршрут - возвращает index.html"""
-    try:
-        index_path = STATIC_DIR / "index.html"
-        if not index_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {index_path}")
+    """Корневой маршрут - отдает index.html"""
+    return FileResponse(index_path)
 
-        with open(index_path) as f:
-            content = f.read()
-            return HTMLResponse(content=content)
-    except Exception as e:
-        print(f"Error serving index.html: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Монтируем статические файлы ПОСЛЕ определения корневого маршрута
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
+# Тестовый API эндпоинт
+@app.post("/api/tests/generate")
+async def generate_test():
+    return {
+        "test": {
+            "title": "Тестовый тест",
+            "questions": [
+                {
+                    "id": 1,
+                    "text": "Пример вопроса",
+                    "options": ["A", "B", "C", "D"],
+                    "correct_answer": "A"
+                }
+            ]
+        }
+    }
 
-@app.exception_handler(404)
-async def custom_404_handler(request, exc):
-    """Обработчик 404 ошибок"""
-    try:
-        index_path = STATIC_DIR / "index.html"
-        if not index_path.exists():
-            raise HTTPException(status_code=404, detail=f"File not found: {index_path}")
+# Тестовый эндпоинт для проверки
+@app.get("/test")
+async def test():
+    return {"status": "API working"}
 
-        with open(index_path) as f:
-            content = f.read()
-            return HTMLResponse(content=content)
-    except Exception as e:
-        print(f"Error in 404 handler: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Добавляем отладочную информацию при запуске
-@app.on_event("startup")
-async def startup_event():
-    print(f"Starting up with BASE_DIR: {BASE_DIR}")
-    print(f"Static files directory: {STATIC_DIR}")
-    print(f"Index file exists: {(STATIC_DIR / 'index.html').exists()}")
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
